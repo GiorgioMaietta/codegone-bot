@@ -15,7 +15,6 @@ from telegram.ext import (
 import os, threading, http.server, socketserver
 
 # ------------------------------------------------------------------ KEEP-ALIVE
-
 def _ping():
     port = int(os.environ.get("PORT", 10000))
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -237,7 +236,9 @@ async def publish_announcement(chat_id, context, draft, photo=None):
         "don_id": draft["don_id"],
         "don_tag": draft["don_tag"],
         "booked": False,
-        "lang": draft["lang"]
+        "lang": draft["lang"],
+        "is_photo": bool(photo),
+        "original_text": text 
     }
 
 
@@ -271,10 +272,13 @@ async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data["original_text"] = data.get("original_text", q.message.text)
 
     # aggiorna annuncio con ✅ e bottone Annulla
-    await q.edit_message_text(
-        f"{q.message.text}\n\n{T[data['lang']]['booked_mark'].format(user_tag=u_tag)}",
+    await edit_announcement(
+        context.bot,
+        q.message.chat_id,
+        aid,
+        f"{q.message.caption or q.message.text}\n\n{T[data['lang']]['booked_mark'].format(user_tag=u_tag)}",
         reply_markup=cancel_kb,
-        parse_mode="Markdown"
+        is_photo=data["is_photo"]
     )
     await q.answer(tr("you_booked", context.user_data))
 
@@ -304,6 +308,25 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+async def edit_announcement(bot, chat_id, message_id, new_text, reply_markup, is_photo):
+    if is_photo:
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=new_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+    else:
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=new_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+
 async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     _, annuncio_id, prenotante_id = q.data.split("|")
@@ -326,13 +349,15 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton(T[data['lang']]["button_book"], callback_data="book")
     ]])
 
-    await context.bot.edit_message_text(
-        chat_id=q.message.chat_id,
-        message_id=annuncio_id,
-        text=data["original_text"],          # salvala quando crei l'annuncio
+    await edit_announcement(
+        context.bot,
+        q.message.chat_id,
+        annuncio_id,
+        data["original_text"],
         reply_markup=kb,
-        parse_mode="Markdown"
+        is_photo=data["is_photo"]
     )
+
 
     u_tag = f"@{q.from_user.username}" if q.from_user.username else q.from_user.first_name
     await context.bot.send_message(
