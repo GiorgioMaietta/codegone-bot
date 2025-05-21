@@ -151,30 +151,80 @@ async def rules_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
 # /regala
+
 async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text(
-            tr("need_desc", context.user_data), parse_mode="Markdown"
-        )
+        await update.message.reply_text(tr("need_desc", context.user_data), parse_mode="Markdown")
         return
-    descr = " ".join(context.args)
-    don = update.effective_user
+
+    descr   = " ".join(context.args)
+    don     = update.effective_user
     don_tag = f"@{don.username}" if don.username else don.first_name
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(tr("button_book", context.user_data), callback_data="book")]]
-    )
-    msg = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=tr("offer_prefix", context.user_data, don_tag=don_tag, descrizione=descr),
-        reply_markup=kb,
-        parse_mode="Markdown",
-    )
-    context.chat_data[msg.message_id] = {
+
+    # salva draft
+    context.chat_data["draft"] = {
+        "descr": descr,
+        "lang":  lang_of(context.user_data),
         "don_id": don.id,
         "don_tag": don_tag,
-        "booked": False,
-        "lang": lang_of(context.user_data)
+        "state": "WAIT_ACTION"
     }
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📷 Aggiungi foto", callback_data="draft|photo"),
+         InlineKeyboardButton("🚀 Pubblica subito", callback_data="draft|publish")]
+    ])
+    await update.message.reply_text("Vuoi allegare una foto?", reply_markup=kb)
+
+async def draft_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    action = update.callback_query.data.split("|")[1]
+    draft  = context.chat_data.get("draft")
+
+    if not draft or draft["state"] != "WAIT_ACTION":
+        await update.callback_query.answer("Nessun annuncio in preparazione.")
+        return
+
+    if action == "photo":
+        draft["state"] = "WAIT_PHOTO"
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Ok! Inviami la foto come immagine singola.")
+    else:  # publish subito
+        await publish_announcement(update.effective_chat.id, context, draft, photo=None)
+        context.chat_data.pop("draft")
+        await update.callback_query.answer("Annuncio pubblicato!")
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    draft = context.chat_data.get("draft")
+    if not draft or draft["state"] != "WAIT_PHOTO":
+        return  # foto non richiesta
+
+    # prende la foto di risoluzione massima
+    file_id = update.message.photo[-1].file_id
+    await publish_announcement(update.effective_chat.id, context, draft, photo=file_id)
+    context.chat_data.pop("draft")
+    await update.message.reply_text("Annuncio con foto pubblicato ✅")
+
+async def publish_announcement(chat_id, context, draft, photo=None):
+    text = T[draft["lang"]]["offer_prefix"].format(
+        don_tag=draft["don_tag"], descrizione=draft["descr"]
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(T[draft["lang"]]["button_book"], callback_data="book")]
+    ])
+
+    if photo:
+        msg = await context.bot.send_photo(chat_id, photo=photo, caption=text, reply_markup=kb, parse_mode="Markdown")
+    else:
+        msg = await context.bot.send_message(chat_id, text=text, reply_markup=kb, parse_mode="Markdown")
+
+    # memorizza meta-info per prenotazioni
+    context.chat_data[msg.message_id] = {
+        "don_id": draft["don_id"],
+        "don_tag": draft["don_tag"],
+        "booked": False,
+        "lang": draft["lang"]
+    }
+
 
 # prenotazione
 async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,6 +337,9 @@ def main():
     app.add_handler(CallbackQueryHandler(book_callback, pattern="^book$"))
     app.add_handler(CallbackQueryHandler(cb_cancel,  pattern="^cancel\\|"))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+    app.add_handler(CallbackQueryHandler(draft_callback, pattern="^draft\\|"))
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+
     logging.basicConfig(level=logging.INFO)
     logger.info("Bot avviato.")
     app.run_polling()
