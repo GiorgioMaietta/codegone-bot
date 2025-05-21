@@ -15,7 +15,6 @@ from telegram.ext import (
 import os, threading, http.server, socketserver
 
 # ------------------------------------------------------------------ KEEP-ALIVE
-import os, threading, http.server, socketserver
 
 def _ping():
     port = int(os.environ.get("PORT", 10000))
@@ -161,6 +160,15 @@ async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     don     = update.effective_user
     don_tag = f"@{don.username}" if don.username else don.first_name
 
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📷 Aggiungi foto", callback_data="draft|photo"),
+         InlineKeyboardButton("🚀 Pubblica subito", callback_data="draft|publish")]
+    ])
+
+    prompt_msg = await update.message.reply_text(
+      "Vuoi allegare una foto?", reply_markup=kb
+    )
+
     # salva draft
     context.chat_data["draft"] = {
         "descr": descr,
@@ -171,13 +179,8 @@ async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "prompt_id": prompt_msg.message_id
     }
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📷 Aggiungi foto", callback_data="draft|photo"),
-         InlineKeyboardButton("🚀 Pubblica subito", callback_data="draft|publish")]
-    ])
-    prompt_msg = await update.message.reply_text(
-      "Vuoi allegare una foto?", reply_markup=kb
-    )
+    
+    
 
 async def draft_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = update.callback_query.data.split("|")[1]
