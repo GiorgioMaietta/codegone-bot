@@ -4,6 +4,7 @@ Riduzione sprechi alimentari (annunci /regala  + prenotazione) con supporto IT/E
 python-telegram-bot 20.x
 """
 from html import escape
+import asyncio, time
 
 import logging
 from telegram import (
@@ -47,6 +48,8 @@ T = {
             "• Per offrire → scrivi `/regala (3 yogurt scadenza 25/05)`\n"
             "• Vuoi qualcosa? premi *Prenota* (vale solo il primo!)\n"
             "• Il bot mette in contatto privato chi offre e chi prenota.\n\n"
+            "• Scrivi /regole per leggere le regole, /lang per impostare la tua lingua.\n\n"
+    
             "📜 *Regole*\n\n"
             "1️⃣ Solo cibo commestibile e ben confezionato.\n"
             "2️⃣ Niente spam / volgarità / off-topic.\n"
@@ -79,6 +82,8 @@ T = {
             "• To offer → write `/regala (3 yogurts exp 25/05)`\n"
             "• Need something? hit *Book* (only the first counts!)\n"
             "• The bot puts giver & receiver in private contact.\n\n"
+            "• Type /regole to read the rules, /lang to set up the language.\n\n"
+        
             "📜 *Rules*\n"
             "1️⃣ Only edible food, properly packed.\n"
             "2️⃣ No spam / insults / off-topic.\n"
@@ -400,7 +405,14 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
     logger.info("Bot avviato.")
-    app.run_polling()
+
+    while True:
+        try:
+            app.run_polling(stop_signals=None)
+        except Exception as e:
+            logger.error("Bot crashed: %s", e)
+        time.sleep(5)          # piccola pausa prima del restart
+
 
 if __name__ == "__main__":
     main()
