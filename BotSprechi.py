@@ -28,7 +28,7 @@ def _ping():
 threading.Thread(target=_ping, daemon=True).start()
 
 
-TOKEN = os.environ["7713879857:AAEZ222wslWVIdVG1JBQ5ot5kIesacVYziw"]        # <-- token ottenuto da @BotFather
+TOKEN = os.environ["TOKEN"]        # <-- token ottenuto da @BotFather
 
 
 logging.basicConfig(
