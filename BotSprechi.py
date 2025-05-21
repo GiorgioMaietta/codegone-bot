@@ -14,16 +14,21 @@ from telegram.ext import (
 )
 import os, threading, http.server, socketserver
 
-def keep_alive():
-    port = int(os.environ.get("PORT", 8080))   # Render passa la porta in $PORT
-    Handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", port), Handler) as httpd:
+# ------------------------------------------------------------------ KEEP-ALIVE
+import os, threading, http.server, socketserver
+
+def _ping():
+    port = int(os.environ.get("PORT", 10000))
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers(); self.wfile.write(b"OK")
+    with socketserver.TCPServer(("0.0.0.0", port), Handler) as httpd:
         httpd.serve_forever()
 
-threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=_ping, daemon=True).start()
 
 
-TOKEN = "7713879857:AAEZ222wslWVIdVG1JBQ5ot5kIesacVYziw"        # <-- token ottenuto da @BotFather
+TOKEN = os.environ["7713879857:AAEZ222wslWVIdVG1JBQ5ot5kIesacVYziw"]        # <-- token ottenuto da @BotFather
 
 
 logging.basicConfig(
@@ -274,17 +279,15 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------#
 def main():
     app = Application.builder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("lang", lang_cmd))
     app.add_handler(CallbackQueryHandler(lang_callback, pattern="^lang\\|"))
     app.add_handler(CommandHandler("regole", rules_cmd))
     app.add_handler(CommandHandler("regala", regala_cmd))
     app.add_handler(CallbackQueryHandler(book_callback, pattern="^book$"))
+    app.add_handler(CallbackQueryHandler(cb_cancel,  pattern="^cancel\\|"))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
-    app.add_handler(CallbackQueryHandler(cb_cancel, pattern="^cancel\\|"))
-
-
+    logging.basicConfig(level=logging.INFO)
     logger.info("Bot avviato.")
     app.run_polling()
 
