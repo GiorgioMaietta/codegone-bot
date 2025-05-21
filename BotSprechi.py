@@ -167,14 +167,17 @@ async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "lang":  lang_of(context.user_data),
         "don_id": don.id,
         "don_tag": don_tag,
-        "state": "WAIT_ACTION"
+        "state": "WAIT_ACTION",
+        "prompt_id": prompt_msg.message_id
     }
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📷 Aggiungi foto", callback_data="draft|photo"),
          InlineKeyboardButton("🚀 Pubblica subito", callback_data="draft|publish")]
     ])
-    await update.message.reply_text("Vuoi allegare una foto?", reply_markup=kb)
+    prompt_msg = await update.message.reply_text(
+      "Vuoi allegare una foto?", reply_markup=kb
+    )
 
 async def draft_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = update.callback_query.data.split("|")[1]
@@ -188,21 +191,30 @@ async def draft_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         draft["state"] = "WAIT_PHOTO"
         await update.callback_query.answer()
         await update.callback_query.edit_message_text("Ok! Inviami la foto come immagine singola.")
-    else:  # publish subito
+    elif action == "publish":
         await publish_announcement(update.effective_chat.id, context, draft, photo=None)
+        # elimina il messaggio prompt
+        await context.bot.delete_message(update.effective_chat.id, draft["prompt_id"])
         context.chat_data.pop("draft")
         await update.callback_query.answer("Annuncio pubblicato!")
+
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     draft = context.chat_data.get("draft")
     if not draft or draft["state"] != "WAIT_PHOTO":
-        return  # foto non richiesta
+        return
 
-    # prende la foto di risoluzione massima
-    file_id = update.message.photo[-1].file_id
-    await publish_announcement(update.effective_chat.id, context, draft, photo=file_id)
+    photo_id = update.message.photo[-1].file_id
+    await publish_announcement(update.effective_chat.id, context, draft, photo=photo_id)
+
+    # elimina il prompt "Vuoi allegare..." (se ancora esiste)
+    await context.bot.delete_message(update.effective_chat.id, draft["prompt_id"])
+    # elimina la foto che l'utente ha appena inviato
+    await context.bot.delete_message(update.effective_chat.id, update.message.message_id)
+
     context.chat_data.pop("draft")
     await update.message.reply_text("Annuncio con foto pubblicato ✅")
+
 
 async def publish_announcement(chat_id, context, draft, photo=None):
     text = T[draft["lang"]]["offer_prefix"].format(
