@@ -209,13 +209,15 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_id = update.message.photo[-1].file_id
     await publish_announcement(update.effective_chat.id, context, draft, photo=photo_id)
 
+    context.chat_data.pop("draft")
+    await update.message.reply_text("Annuncio con foto pubblicato ✅")
+
     # elimina il prompt "Vuoi allegare..." (se ancora esiste)
     await context.bot.delete_message(update.effective_chat.id, draft["prompt_id"])
     # elimina la foto che l'utente ha appena inviato
     await context.bot.delete_message(update.effective_chat.id, update.message.message_id)
 
-    context.chat_data.pop("draft")
-    await update.message.reply_text("Annuncio con foto pubblicato ✅")
+    
 
 
 async def publish_announcement(chat_id, context, draft, photo=None):
