@@ -3,6 +3,7 @@ Bot Telegram – Residenza Codegone  ♻️🥗
 Riduzione sprechi alimentari (annunci /regala  + prenotazione) con supporto IT/EN.
 python-telegram-bot 20.x
 """
+from html import escape
 
 import logging
 from telegram import (
@@ -151,13 +152,14 @@ async def rules_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /regala
 
 async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    
     if not context.args:
         await update.message.reply_text(tr("need_desc", context.user_data), parse_mode="Markdown")
         return
 
     descr   = " ".join(context.args)
     don     = update.effective_user
-    don_tag = f"@{don.username}" if don.username else don.first_name
+    don_tag  = mention(don)
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📷 Aggiungi foto", callback_data="draft|photo"),
@@ -259,7 +261,7 @@ async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user    = q.from_user
-    u_tag   = f"@{user.username}" if user.username else user.first_name
+    u_tag    = mention(user)
     data["booked"] = True
 
     # --- bottone Annulla solo per il prenotante ---
@@ -367,6 +369,20 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         T[data['lang']]["canceled_msg"].format(u=u_tag)
     )
     await q.answer("Prenotazione annullata!")
+
+    
+def mention(user):
+    """
+    Restituisce una menzione cliccabile:
+    • @username se esiste,
+    • altrimenti [Nome](tg://user?id=123456).
+    Usata in Markdown.
+    """
+    if user.username:
+        return f"@{user.username}"
+    safe_name = escape(user.first_name)
+    return f"[{safe_name}](tg://user?id={user.id})"
+
 
 # ---------------------------------------------------------------------------#
 def main():
