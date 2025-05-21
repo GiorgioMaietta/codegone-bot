@@ -12,8 +12,19 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ContextTypes, filters
 )
+import os, threading, http.server, socketserver
+
+def keep_alive():
+    port = int(os.environ.get("PORT", 8080))   # Render passa la porta in $PORT
+    Handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), Handler) as httpd:
+        httpd.serve_forever()
+
+threading.Thread(target=keep_alive, daemon=True).start()
+
 
 TOKEN = "7713879857:AAEZ222wslWVIdVG1JBQ5ot5kIesacVYziw"        # <-- token ottenuto da @BotFather
+
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -27,12 +38,12 @@ T = {
     "it": {
         "rules": (
             "🍏 *Benvenuto/a in Residenza Codegone – Zero Sprechi!* ♻️\n\n"
-            "Qui scambiamo cibo in scadenza per evitare che finisca nella spazzatura.\n\n"
+            "Qui doniamo cibo in scadenza per evitare che finisca nella spazzatura.\n\n"
             "👣 *Come funziona*\n"
-            "• Per offrire → `/regala 3 yogurt scadenza 25/05`\n"
+            "• Per offrire → scrivi `/regala (3 yogurt scadenza 25/05)`\n"
             "• Vuoi qualcosa? premi *Prenota* (vale solo il primo!)\n"
             "• Il bot mette in contatto privato chi offre e chi prenota.\n\n"
-            "📜 *Regole*\n"
+            "📜 *Regole*\n\n"
             "1️⃣ Solo cibo commestibile e ben confezionato.\n"
             "2️⃣ Niente spam / volgarità / off-topic.\n"
             "3️⃣ Rispetta gli accordi: se prenoti, ritira.\n"
@@ -59,9 +70,9 @@ T = {
     "en": {
         "rules": (
             "🍏 *Welcome to Codegone Residence – Zero Waste!* ♻️\n\n"
-            "Here we swap soon-to-expire food so it doesn’t end up in the bin.\n\n"
+            "Here we gift soon-to-expire food so it doesn’t end up in the bin.\n\n"
             "👣 *How it works*\n"
-            "• To offer → `/regala 3 yogurts exp 25/05`\n"
+            "• To offer → write `/regala (3 yogurts exp 25/05)`\n"
             "• Need something? hit *Book* (only the first counts!)\n"
             "• The bot puts giver & receiver in private contact.\n\n"
             "📜 *Rules*\n"
@@ -89,7 +100,10 @@ T = {
         "lang_set_en": "Language set to 🇬🇧 English."
     },
 }
-
+T["it"]["cancel_button"] = "❌ Annulla"
+T["it"]["canceled_msg"]  = "🔄 Prenotazione annullata da {u}. Annuncio di nuovo disponibile!"
+T["en"]["cancel_button"] = "❌ Cancel"
+T["en"]["canceled_msg"]  = "🔄 Booking canceled by {u}. Offer is available again!"
 # ---------------------------------------------------------------------------#
 def lang_of(user_data):
     """ritorna 'it' o 'en' (default it)"""
@@ -159,9 +173,11 @@ async def regala_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # prenotazione
 async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    aid = q.message.message_id
+    q    = update.callback_query
+    aid  = q.message.message_id
     data = context.chat_data.get(aid)
+
+    # controlli
     if not data:
         await q.answer("Error.")
         return
@@ -169,32 +185,44 @@ async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer(tr("already_booked", context.user_data), show_alert=True)
         return
 
-    user = q.from_user
-    user_tag = f"@{user.username}" if user.username else user.first_name
+    user    = q.from_user
+    u_tag   = f"@{user.username}" if user.username else user.first_name
     data["booked"] = True
 
-    # edit annuncio
-    new_text = f"{q.message.text}\n\n{T[data['lang']]['booked_mark'].format(user_tag=user_tag)}"
-    await q.edit_message_text(new_text, parse_mode="Markdown")
+    # --- bottone Annulla solo per il prenotante ---
+    cancel_kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            T[data["lang"]]["cancel_button"],
+            callback_data=f"cancel|{aid}|{user.id}"    # cancel|idAnnuncio|idPrenotante
+        )
+    ]])
 
+    # salva il testo originale se non già presente
+    data["original_text"] = data.get("original_text", q.message.text)
+
+    # aggiorna annuncio con ✅ e bottone Annulla
+    await q.edit_message_text(
+        f"{q.message.text}\n\n{T[data['lang']]['booked_mark'].format(user_tag=u_tag)}",
+        reply_markup=cancel_kb,
+        parse_mode="Markdown"
+    )
     await q.answer(tr("you_booked", context.user_data))
 
-    # notifica gruppo
+    # avvisa gruppo
     await context.bot.send_message(
-        chat_id=q.message.chat_id,
-        text=T[data['lang']]["group_notify"].format(
-            user_tag=user_tag, don_tag=data["don_tag"]
-        )
+        q.message.chat_id,
+        T[data['lang']]["group_notify"].format(user_tag=u_tag, don_tag=data["don_tag"])
     )
 
-    # DM al donatore (nella sua lingua!)
+    # DM al donatore
     try:
         await context.bot.send_message(
-            chat_id=data["don_id"],
-            text=T[data['lang']]["don_dm"].format(user_tag=user_tag)
+            data["don_id"],
+            T[data['lang']]["don_dm"].format(user_tag=u_tag)
         )
     except Exception:
         pass
+
 
 # benvenuto nuovi membri
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,6 +233,43 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"👋 {tag}\n\n{T['it']['rules']}\n\n{T['en']['rules']}",
             parse_mode="Markdown"
         )
+
+async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    _, annuncio_id, prenotante_id = q.data.split("|")
+    annuncio_id = int(annuncio_id)
+
+    # controllo che clicchi proprio chi aveva prenotato
+    if str(q.from_user.id) != prenotante_id:
+        await q.answer("Non puoi annullare questa prenotazione.", show_alert=True)
+        return
+
+    data = context.chat_data.get(annuncio_id)
+    if not data or not data["booked"]:
+        await q.answer("Già annullata o non valida.", show_alert=True)
+        return
+
+    data["booked"] = False  # libera l'annuncio
+
+    # ricrea bottone Prenota
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(T[data['lang']]["button_book"], callback_data="book")
+    ]])
+
+    await context.bot.edit_message_text(
+        chat_id=q.message.chat_id,
+        message_id=annuncio_id,
+        text=data["original_text"],          # salvala quando crei l'annuncio
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+
+    u_tag = f"@{q.from_user.username}" if q.from_user.username else q.from_user.first_name
+    await context.bot.send_message(
+        q.message.chat_id,
+        T[data['lang']]["canceled_msg"].format(u=u_tag)
+    )
+    await q.answer("Prenotazione annullata!")
 
 # ---------------------------------------------------------------------------#
 def main():
@@ -217,6 +282,8 @@ def main():
     app.add_handler(CommandHandler("regala", regala_cmd))
     app.add_handler(CallbackQueryHandler(book_callback, pattern="^book$"))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+    app.add_handler(CallbackQueryHandler(cb_cancel, pattern="^cancel\\|"))
+
 
     logger.info("Bot avviato.")
     app.run_polling()
