@@ -5,6 +5,7 @@ python-telegram-bot 20.x
 """
 from html import escape
 import asyncio, time
+from telegram.helpers import escape_markdown
 
 import logging
 from telegram import (
@@ -294,14 +295,17 @@ async def book_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # avvisa gruppo
     await context.bot.send_message(
         q.message.chat_id,
-        T[data['lang']]["group_notify"].format(user_tag=u_tag, don_tag=data["don_tag"])
+        T[data['lang']]["group_notify"].format(user_tag=u_tag, don_tag=data["don_tag"]),
+        parse_mode="Markdown"   
     )
+
 
     # DM al donatore
     try:
         await context.bot.send_message(
             data["don_id"],
-            T[data['lang']]["don_dm"].format(user_tag=u_tag)
+            T[data['lang']]["don_dm"].format(user_tag=u_tag),
+            parse_mode="Markdown"
         )
     except Exception:
         pass
@@ -371,7 +375,8 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u_tag = f"@{q.from_user.username}" if q.from_user.username else q.from_user.first_name
     await context.bot.send_message(
         q.message.chat_id,
-        T[data['lang']]["canceled_msg"].format(u=u_tag)
+        T[data['lang']]["canceled_msg"].format(u=u_tag),
+        parse_mode="Markdown"
     )
     await q.answer("Prenotazione annullata!")
 
@@ -385,7 +390,7 @@ def mention(user):
     """
     if user.username:
         return f"@{user.username}"
-    safe_name = escape(user.first_name)
+    safe_name = escape_markdown(user.first_name, version=2)
     return f"[{safe_name}](tg://user?id={user.id})"
 
 
